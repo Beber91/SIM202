@@ -1,0 +1,7 @@
+*~
+*#
+.RData
+.RHistory
+*.html
+*.Rmd
+*.zip
