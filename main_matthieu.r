@@ -1,4 +1,5 @@
 rm(list=objects())
+graphics.off()
 library(tidyverse)
 library(lubridate)
 library(ranger)
@@ -12,12 +13,16 @@ library(mc2d)
 library(opera)
 library(abind)
 library(randomForest)
-source("format_data.r")
+
 
 setwd("C:/Users/CM/code/M1/R")
 
-train <- read_delim(file="Data/train_V2.csv",delim=',')
-test <- read_delim(file="Data/test_V2.csv",delim=',')
+##load tous les fichiers en sources
+files.sources = list.files()
+sapply(files.sources, source) 
+
+train <- read_delim(file="data/train_V2.csv",delim=',')
+test <- read_delim(file="data/test_V2.csv",delim=',')
 
 plot(train$Date, train$Load, type='l')
 par(new=T)
@@ -28,15 +33,15 @@ reg = lm(Load~Temp, data=train)
 points(train$Temp ,reg$fitted.values)
 
 days_to_numeric = function (data) {
-  data$WeekDays[data$WeekDays=='Monday']    = 1
-  data$WeekDays[data$WeekDays=='Tuesday']   = 2
-  data$WeekDays[data$WeekDays=='Wednesday'] = 3
-  data$WeekDays[data$WeekDays=='Thursday']  = 4
-  data$WeekDays[data$WeekDays=='Friday']    = 5
-  data$WeekDays[data$WeekDays=='Saturday']  = 6
-  data$WeekDays[data$WeekDays=='Sunday']    = 7
-  data$WeekDays = as.numeric(data$WeekDays)
-  return (data$WeekDays)
+    data$WeekDays[data$WeekDays=='Monday']    = 1
+    data$WeekDays[data$WeekDays=='Tuesday']   = 2
+    data$WeekDays[data$WeekDays=='Wednesday'] = 3
+    data$WeekDays[data$WeekDays=='Thursday']  = 4
+    data$WeekDays[data$WeekDays=='Friday']    = 5
+    data$WeekDays[data$WeekDays=='Saturday']  = 6
+    data$WeekDays[data$WeekDays=='Sunday']    = 7
+    data$WeekDays = as.numeric(data$WeekDays)
+    return (data$WeekDays)
 }
 
 train$WeekDays = days_to_numeric(train)
@@ -56,62 +61,31 @@ plot(train$Date, train$Load, type = "l", xlab = "",
 lines(train$Date, MA, col = "red", lwd = 2)
 
 
-#estimation avec fourier
-total.time = c(1:(nrow(train)+nrow(test)))
-length(total.time)
-train$time = total.time[1:nrow(train)]
-test$time = tail(total.time,nrow(test))
+##estimation avec fourier
+fourier(train, test, plt = TRUE)
 
-fourier.make.matrix = function (t, k, period) {
-  w = 2*pi/period
-  ret = cbind(cos(w*t), sin(w*t))
-  
-  for(i in c(2:K))
-  {
-    ret = cbind(ret, cos(i*w*t), sin(i*w*t))
-  }
-  return (ret)
-}
-
-K = 5; period = 365
-fourier.train = fourier.make.matrix(train$time, K, period)
-fourier.test = fourier.make.matrix(test$time, K, period)
-
-fourier.train.df = data.frame(train$Load,fourier.train)
-fourier.test.df = data.frame(fourier.test)
-
-reg = lm(train.Load ~., data=fourier.train.df)
-
-pred.fourier = predict(reg, newdata=fourier.test.df)
-total.fourier = c(reg$fitted,pred.fourier)
-
-par(mfrow=c(1,1))
-plot(train$Load,type='l', xlim=c(0,length(total.time)))
-lines(reg$fitted,col='red', lwd=2)
-lines(test$time,pred.fourier,col='green', lwd=2)
-
-#saisonalite : hebdomadaire
+##saisonalite : hebdomadaire
 
 num.years = 0
 average = 0
 N = 8; a = 0.7 #exponential weight
 while (365*(num.years+1) <= length(train$Date)) {
-  par(mfrow = c(1, 1))
-  dateyear = train$Date[(365*num.years+1):(365*(num.years+1))]
-  loadyear = train$Load[(365*num.years+1):(365*(num.years+1))]
+    par(mfrow = c(1, 1))
+    dateyear = train$Date[(365*num.years+1):(365*(num.years+1))]
+    loadyear = train$Load[(365*num.years+1):(365*(num.years+1))]
 
-  #plot(dateyear,loadyear,type='l')
+    ##plot(dateyear,loadyear,type='l')
   
-  MAw <- stats::filter(loadyear, filter = rep(1/52,52),
+    MAw <- stats::filter(loadyear, filter = rep(1/52,52),
                       method = c("convolution"), sides = 2, circular = T)
-  #plot(dateyear,loadyear, type = "l", xlab = "",
-   #    ylab = "consumption (kw)", col = "seagreen4", lwd = 1)
-  #lines(dateyear, MAw, col = "red", lwd = 2)
+    ##plot(dateyear,loadyear, type = "l", xlab = "",
+    ##    ylab = "consumption (kw)", col = "seagreen4", lwd = 1)
+    ##lines(dateyear, MAw, col = "red", lwd = 2)
   
-  #plot(dateyear, loadyear - MAw, type="l")
-  expweight = (((1-a)/(1-a^8))*a^(N-(num.years+1)))
-  average = expweight*(average + (loadyear - MAw))
-  num.years = num.years + 1
+    ##plot(dateyear, loadyear - MAw, type="l")
+    expweight = (((1-a)/(1-a^8))*a^(N-(num.years+1)))
+    average = expweight*(average + (loadyear - MAw))
+    num.years = num.years + 1
 }
 plot(average)
 
@@ -133,7 +107,7 @@ Load = pred.total.test
 Id = train$Id
 submission = data.frame(Load, Id)
 
-write.csv(submission, file ="submission.csv", row.names=F)
+write.csv(submission, file ="submissions/submission.csv", row.names=F)
 
 
 MAw.train.total <- stats::filter(train$Load.1, filter = rep(1/52,52),
@@ -166,7 +140,7 @@ plot(train$Load,type='l', xlim=c(0,length(total.time)))
 lines(train$time,Gam$fit, col='red', lwd=1)
 lines(test$time,gam.test, col='green', lwd=1)
 
-#visreg(Gam,"Temp_s95")
+##visreg(Gam,"Temp_s95")
 
 evaluate = function(test_label, predicted_set){
   return(rmse(test_label, predicted_set))
@@ -177,7 +151,7 @@ test_label = tmp$test_label
 
 Gam.rmse = evaluate(test_label, gam.test)
 
-#cross-validation
+##cross-validation
 
 cross.validation = function (train, test) {
   set.seed(123)
@@ -220,7 +194,7 @@ submission = data.frame(Load, Id)
 
 write.csv(submission, file ="submission.csv", row.names=F)
 
-#lstm
+##lstm
 
 labels = train$Load
 train.lstm = train[,-c(1,2,22,23)]
@@ -259,7 +233,7 @@ RMSE = rmse(pred.lstm$test[-N], test$Load.1[2:N])
 RMSE
 
 
-#random forest
+##random forest
 
 rf = randomForest(Load ~ ., data=train, mtry=3,
                          importance=TRUE, na.action=na.omit)
@@ -274,7 +248,7 @@ RMSE = rmse(pred.test.rf[-N], test$Load.1[2:N])
 RMSE
 
 
-#aggregation
+##aggregation
 
 expert1.train  = predict(model,train)
 expert2.train  = pred.lstm$train
@@ -299,7 +273,7 @@ oracle1 = mixture(
 coeffs1 = oracle1$coefficients
 print(oracle1)
 
-#alternative
+##alternative
 
 oracle2 <- oracle(Y = train$Load,
                         experts = experts.train,
