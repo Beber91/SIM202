@@ -36,5 +36,5 @@ neural_network = function(train, test, plt = FALSE){
     N = length(test$Load.1)
     RMSE = rmse(pred.lstm$test[-N], test$Load.1[2:N])
     RMSE
-    return pred.lstm
+    return(pred.lstm)
 }
