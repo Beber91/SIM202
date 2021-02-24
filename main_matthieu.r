@@ -1,24 +1,15 @@
 rm(list=objects())
 graphics.off()
-library(tidyverse)
-library(lubridate)
-library(ranger)
-library(pracma)
-library(Metrics)
-library(mgcv)
-library(keras)
-library(visreg)
-library(caret)
-library(mc2d)
-library(opera)
-library(abind)
-library(randomForest)
 
+#pour load tout en 2 lignes, il faut juste rajouter les librairies dans libs.to.load
+
+libs.to.load = c("tidyverse", "lubridate", "ranger", "pracma", "Metrics", "mgcv", "keras", "visreg", "caret", "mc2d", "opera", "abind", "randomForest")
+suppressPackageStartupMessages(sapply(libs.to.load, require, character.only = TRUE))
 
 setwd("C:/Users/CM/code/M1/R")
 
 ##load tous les fichiers en sources
-files.sources = list.files()
+files.sources = list.files(pattern = "*.r")
 sapply(files.sources, source) 
 
 train <- read_delim(file="data/train_V2.csv",delim=',')
@@ -31,18 +22,6 @@ plot(train$Date, train$Temp, type='l', col='red')
 plot(train$Temp,train$Load, col='red')
 reg = lm(Load~Temp, data=train)
 points(train$Temp ,reg$fitted.values)
-
-days_to_numeric = function (data) {
-    data$WeekDays[data$WeekDays=='Monday']    = 1
-    data$WeekDays[data$WeekDays=='Tuesday']   = 2
-    data$WeekDays[data$WeekDays=='Wednesday'] = 3
-    data$WeekDays[data$WeekDays=='Thursday']  = 4
-    data$WeekDays[data$WeekDays=='Friday']    = 5
-    data$WeekDays[data$WeekDays=='Saturday']  = 6
-    data$WeekDays[data$WeekDays=='Sunday']    = 7
-    data$WeekDays = as.numeric(data$WeekDays)
-    return (data$WeekDays)
-}
 
 train$WeekDays = days_to_numeric(train)
 test$WeekDays = days_to_numeric(test)
@@ -141,10 +120,6 @@ lines(train$time,Gam$fit, col='red', lwd=1)
 lines(test$time,gam.test, col='green', lwd=1)
 
 ##visreg(Gam,"Temp_s95")
-
-evaluate = function(test_label, predicted_set){
-  return(rmse(test_label, predicted_set))
-}
 
 tmp = format_data("./data/train_V2.csv", "./data/test_V2.csv")
 test_label = tmp$test_label
@@ -249,6 +224,8 @@ RMSE
 
 
 ##aggregation
+
+
 
 expert1.train  = predict(model,train)
 expert2.train  = pred.lstm$train
