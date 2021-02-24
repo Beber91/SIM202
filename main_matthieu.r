@@ -153,7 +153,7 @@ reg2 = lm(Load~Load.1+Load.7+Temp
 summary(reg2)
 
 ##visreg(Gam,"Temp_s95")
-gam.test = gam(train, test)
+gam.test = gam_rte(train, test)
 
 tmp = format_data("./data/train_V2.csv", "./data/test_V2.csv")
 test_label = tmp$test_label
@@ -183,29 +183,23 @@ pred.lstm = neural_network(train, test)
 
 ##random forest
 
-pred.test.rf = random_forest(train, test)
+res = random_forest(train, test)
+pred.test.rf = res$pred.test.rf
+rf = res$rf
+
 
 ##aggregation
 
-add_expert = function(new_train, new_test, experts.train, experts.test){
-    experts.train = array_reshape(abind(experts.train, new_train, along=2), c(3028,1,length(experts.train)+1))
-    experts.test = cbind(experts.test, new_test)
-    return(experts.train, experts.test)
+list_experts_train = abind(predict(model, train), pred.lstm$train, rf$predicted, along = 2) 
+experts.test = cbind(pred.test, pred.lstm$test, pred.test.rf)
+
+
+add_expert = function(list_experts_train){
+    experts.train = array_reshape(abind(list_experts_train), c(3028,1,length(list_experts_train)/3028))
+    return(experts.train)
 }
 
-expert1.train  = predict(model,train)
-expert2.train  = pred.lstm$train
-expert3.train  = rf$predicted
-
-expert1.test  = pred.test
-expert2.test = pred.lstm$test
-expert3.test  = pred.test.rf
-
-experts.train = array_reshape(abind(expert1.train,expert2.train,expert3.train,
-                              along=2), c(3028,1,3))
-
-experts.test = cbind(expert1.test,expert2.test,expert3.test)
-
+experts.train = add_expert(list_experts_train)
 oracle1 = mixture(
             Y = train$Load,
             experts = experts.train,

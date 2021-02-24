@@ -13,5 +13,5 @@ random_forest = function(train, test, plt = FALSE){
     N = length(test$Load.1)
     RMSE = rmse(pred.test.rf[-N], test$Load.1[2:N])
     RMSE
-    return(pred.test.rf)
+    return(list("pred.test.rf" = pred.test.rf, "rf" = rf))
  }
