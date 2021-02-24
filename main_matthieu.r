@@ -1,19 +1,20 @@
 rm(list=objects())
 graphics.off()
 
-#pour load tout en 2 lignes, il faut juste rajouter les librairies dans libs.to.load
+##pour load tout en 2 lignes, il faut juste rajouter les librairies dans libs.to.load
 
 libs.to.load = c("icesTAF", "tidyverse", "lubridate", "ranger", "pracma", "Metrics", "mgcv", "keras", "visreg", "caret", "mc2d", "opera", "abind", "randomForest", "tensorflow")
 suppressPackageStartupMessages(sapply(libs.to.load, require, character.only = TRUE))
 
-#setwd("C:/Users/CM/code/M1/R")
+##setwd("C:/Users/CM/code/M1/R")
 
 ##load tous les fichiers en sources
 files.sources = list.files(pattern = "*.r$")
 files.sources = files.sources[files.sources != "main_matthieu.r"]
-for (f in files.sources){
-    source(f, verbose = TRUE)
-}
+sapply(files.sources, source)
+
+##
+plt = FALSE #(si on veut plot, mettre à TRUE)
 
 ##MAIN NICOLAS
 model = "lstm"
@@ -33,20 +34,26 @@ if (model == "xgboost"){
 
 print(paste("Score final : ", evaluate(test_label, pred), sep=""))
 
-plot(c(train_label, pred))
+if (plt) {
+    plot(c(train_label, pred))
+}
+
 ##FIN MAIN NICOLAS 
 
 
 train <- read_delim(file="data/train_V2.csv",delim=',')
 test <- read_delim(file="data/test_V2.csv",delim=',')
 
-plot(train$Date, train$Load, type='l')
-par(new=T)
-plot(train$Date, train$Temp, type='l', col='red')
-
-plot(train$Temp,train$Load, col='red')
 reg = lm(Load~Temp, data=train)
-points(train$Temp ,reg$fitted.values)
+
+if (plt){
+    plot(train$Date, train$Load, type='l')
+    par(new=T)
+    plot(train$Date, train$Temp, type='l', col='red')
+
+    plot(train$Temp,train$Load, col='red')
+    points(train$Temp ,reg$fitted.values)
+}
 
 train$WeekDays = days_to_numeric(train)
 test$WeekDays = days_to_numeric(test)
@@ -54,19 +61,28 @@ test$WeekDays = days_to_numeric(test)
 train$Year = train$Year - 2012
 test$Year = test$Year - 2012
 
+total.time = c(1:(nrow(train)+nrow(test)))
+length(total.time)
+train$time = total.time[1:nrow(train)]
+test$time = tail(total.time,nrow(test))
+
+
 #saisonalite : annuelle
 
-plot(train$Date, train$Load, type='l')
+if (plt){
+    plot(train$Date, train$Load, type='l')
+}
 
 MA <- stats::filter(train$Load, filter = rep(1/365,365),
              method = c("convolution"), sides = 2, circular = FALSE)
-plot(train$Date, train$Load, type = "l", xlab = "",
-     ylab = "consumption (kw)", col = "seagreen4", lwd = 1)
-lines(train$Date, MA, col = "red", lwd = 2)
-
+if (plt){
+    plot(train$Date, train$Load, type = "l", xlab = "",
+         ylab = "consumption (kw)", col = "seagreen4", lwd = 1)
+    lines(train$Date, MA, col = "red", lwd = 2)
+}
 
 ##estimation avec fourier
-fourier(train, test, plt = TRUE)
+pred.fourier = fourier(train, test, plt = TRUE)
 
 ##saisonalite : hebdomadaire
 
@@ -91,7 +107,9 @@ while (365*(num.years+1) <= length(train$Date)) {
     average = expweight*(average + (loadyear - MAw))
     num.years = num.years + 1
 }
-plot(average)
+if (plt){
+    plot(average)
+}
 
 train.to.day = train$time %% 365 + 1
 test.to.day = test$time %% 365 + 1
@@ -102,13 +120,16 @@ pred.hebdo.test = average[test.to.day]
 pred.total.train = reg$fitted + pred.hebdo.train
 pred.total.test = pred.fourier + pred.hebdo.test
 
-par(mfrow=c(1,1))
-plot(train$Load,type='l', xlim=c(0,length(total.time)))
-lines(train$time,pred.total.train, col='red', lwd=1)
-lines(test$time,pred.total.test, col='green', lwd=1)
+
+if (plt){
+    par(mfrow=c(1,1))
+    plot(train$Load,type='l', xlim=c(0,length(total.time)))
+    lines(train$time,pred.total.train, col='red', lwd=1)
+    lines(test$time,pred.total.test, col='green', lwd=1)
+}
 
 Load = pred.total.test
-Id = train$Id
+Id = test$Id
 submission = data.frame(Load, Id)
 
 write.csv(submission, file ="submissions/submission.csv", row.names=F)
@@ -139,11 +160,12 @@ summary(Gam)
 gam.train = predict(Gam, newdata=train)
 gam.test = predict(Gam, newdata=test)
 
-par(mfrow=c(1,1))
-plot(train$Load,type='l', xlim=c(0,length(total.time)))
-lines(train$time,Gam$fit, col='red', lwd=1)
-lines(test$time,gam.test, col='green', lwd=1)
-
+if (plt){
+    par(mfrow=c(1,1))
+    plot(train$Load,type='l', xlim=c(0,length(total.time)))
+    lines(train$time,Gam$fit, col='red', lwd=1)
+    lines(test$time,gam.test, col='green', lwd=1)
+}
 ##visreg(Gam,"Temp_s95")
 
 tmp = format_data("./data/train_V2.csv", "./data/test_V2.csv")
@@ -182,11 +204,12 @@ cross.validation = function (train, test) {
 cv = cross.validation(train, test)
 model = cv$model; pred.test = cv$pred.test; RMSE = cv$RMSE
 
-
-par(mfrow=c(1,1))
-plot(train$Load,type='l', xlim=c(0,length(total.time)))
-lines(train$time,predict(model,train), col='red', lwd=1)
-lines(test$time,pred.test, col='green', lwd=1)
+if (plt){
+    par(mfrow=c(1,1))
+    plot(train$Load,type='l', xlim=c(0,length(total.time)))
+    lines(train$time,predict(model,train), col='red', lwd=1)
+    lines(test$time,pred.test, col='green', lwd=1)
+}
 
 Load = pred.test
 Id = 1:length(Load)
@@ -196,63 +219,18 @@ write.csv(submission, file ="submission.csv", row.names=F)
 
 ##lstm
 
-labels = train$Load
-train.lstm = train[,-c(1,2,22,23)]
-test.lstm = test[,-c(1,20,21,23,24)]
-
-lstm = function(train_set, train_label, test_set) {
-  y = train_label
-  x = data.matrix(train_set)
-  x_test = data.matrix(test_set)
-  model = keras_model_sequential() %>%
-    layer_dense(units = 19, activation = 'relu', input_shape = c(19)) %>%
-    layer_dense(units = 12, activation = 'relu') %>%
-    layer_dense(units = 6, activation = 'relu') %>%
-    layer_dense(units=1, activation = "linear")
-  
-  model %>% compile(loss = 'mse',
-                    optimizer = optimizer_adam(0.0005))
-  
-  model %>% fit(x,y, epochs=15)
-
-  pred.train = model %>% predict(x)
-  pred.test = model %>% predict(x_test)
-
-  return(list("train"=pred.train,"test"=pred.test))
-}
-
-
-pred.lstm = lstm(train.lstm, labels, test.lstm)
-
-par(mfrow=c(1,1))
-plot(train$Load,type='l', xlim=c(0,length(total.time)))
-lines(test$time,pred.lstm$test, col='green', lwd=1)
-
-N = length(test$Load.1)
-RMSE = rmse(pred.lstm$test[-N], test$Load.1[2:N])
-RMSE
-
+pred.lstm = neural_network(train, test)
 
 ##random forest
 
-rf = randomForest(Load ~ ., data=train, mtry=3,
-                         importance=TRUE, na.action=na.omit)
-pred.test.rf = predict(rf,test)
-
-par(mfrow=c(1,1))
-plot(train$Load,type='l', xlim=c(0,length(total.time)))
-lines(test$time,pred.test.rf, col='green', lwd=1)
-
-N = length(test$Load.1)
-RMSE = rmse(pred.test.rf[-N], test$Load.1[2:N])
-RMSE
-
+pred.test.rf = random_forest(train, test)
 
 ##aggregation
 
 add_expert = function(new_train, new_test, experts.train, experts.test){
     experts.train = array_reshape(abind(experts.train, new_train, along=2), c(3028,1,length(experts.train)+1))
     experts.test = cbind(experts.test, new_test)
+    return(experts.train, experts.test)
 }
 
 expert1.train  = predict(model,train)
