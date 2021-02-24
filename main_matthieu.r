@@ -15,6 +15,8 @@ sapply(files.sources, source)
 
 ##
 plt = FALSE #(si on veut plot, mettre à TRUE)
+path_submission = "./submissions/submission.csv"
+
 
 ##MAIN NICOLAS
 model = "lstm"
@@ -132,7 +134,7 @@ Load = pred.total.test
 Id = test$Id
 submission = data.frame(Load, Id)
 
-write.csv(submission, file ="submissions/submission.csv", row.names=F)
+write.csv(submission, file =path_submission, row.names=F)
 
 
 MAw.train.total <- stats::filter(train$Load.1, filter = rep(1/52,52),
@@ -215,7 +217,7 @@ Load = pred.test
 Id = 1:length(Load)
 submission = data.frame(Load, Id)
 
-write.csv(submission, file ="submission.csv", row.names=F)
+write.csv(submission, file =path_submission, row.names=F)
 
 ##lstm
 
@@ -281,5 +283,5 @@ Load = pred.oracle
 Id = 1:length(test$Load.1)
 submission = data.frame(Load, Id)
 
-write.csv(submission, file ="submission.csv", row.names=F)
+write.csv(submission, file =path_submission, row.names=F)
 
