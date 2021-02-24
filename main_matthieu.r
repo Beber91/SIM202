@@ -3,14 +3,39 @@ graphics.off()
 
 #pour load tout en 2 lignes, il faut juste rajouter les librairies dans libs.to.load
 
-libs.to.load = c("tidyverse", "lubridate", "ranger", "pracma", "Metrics", "mgcv", "keras", "visreg", "caret", "mc2d", "opera", "abind", "randomForest")
+libs.to.load = c("icesTAF", "tidyverse", "lubridate", "ranger", "pracma", "Metrics", "mgcv", "keras", "visreg", "caret", "mc2d", "opera", "abind", "randomForest", "tensorflow")
 suppressPackageStartupMessages(sapply(libs.to.load, require, character.only = TRUE))
 
-setwd("C:/Users/CM/code/M1/R")
+#setwd("C:/Users/CM/code/M1/R")
 
 ##load tous les fichiers en sources
-files.sources = list.files(pattern = "*.r")
-sapply(files.sources, source) 
+files.sources = list.files(pattern = "*.r$")
+files.sources = files.sources[files.sources != "main_matthieu.r"]
+for (f in files.sources){
+    source(f, verbose = TRUE)
+}
+
+##MAIN NICOLAS
+model = "lstm"
+
+data = format_data("./data/train_V2.csv", "./data/test_V2.csv")
+train_set = data$train_set
+test_set = data$test_set
+train_label = data$train_label
+test_label = data$test_label
+
+if (model == "xgboost"){
+  pred = xgboost_rte(train_set, train_label, test_set)
+} else if(model == "lstm"){
+  pred = lstm(train_set, train_label, test_set)
+}
+
+
+print(paste("Score final : ", evaluate(test_label, pred), sep=""))
+
+plot(c(train_label, pred))
+##FIN MAIN NICOLAS 
+
 
 train <- read_delim(file="data/train_V2.csv",delim=',')
 test <- read_delim(file="data/test_V2.csv",delim=',')
@@ -225,7 +250,10 @@ RMSE
 
 ##aggregation
 
-
+add_expert = function(new_train, new_test, experts.train, experts.test){
+    experts.train = array_reshape(abind(experts.train, new_train, along=2), c(3028,1,length(experts.train)+1))
+    experts.test = cbind(experts.test, new_test)
+}
 
 expert1.train  = predict(model,train)
 expert2.train  = pred.lstm$train

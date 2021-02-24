@@ -32,4 +32,5 @@ fourier = function(train, test, plt = FALSE){
         lines(reg$fitted,col='red', lwd=2)
         lines(test$time,pred.fourier,col='green', lwd=2)
     }
+    return(pred.fourier)
 }
