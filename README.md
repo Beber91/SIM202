@@ -1,6 +1,6 @@
 # SIM202
 ## Architecture : 
-racine du projet : fichiers sources\\
+racine du projet : fichiers sources\n
 fig : figures générées
 data : toutes les données au format .csv
 submissions : submission au format .csv
