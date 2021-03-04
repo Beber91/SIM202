@@ -3,7 +3,10 @@ graphics.off()
 
 ##pour load tout en 2 lignes, il faut juste rajouter les librairies dans libs.to.load
 
-libs.to.load = c("tidyverse", "lubridate", "ranger", "pracma", "Metrics", "mgcv", "keras", "visreg", "caret", "mc2d", "opera", "abind", "randomForest", "tensorflow")
+libs.to.load = c("tidyverse", "lubridate", "ranger",
+                 "pracma", "Metrics", "mgcv", "keras",
+                 "visreg", "caret", "mc2d", "opera", "abind",
+                 "randomForest", "tensorflow","plot3D","e1071")
 suppressPackageStartupMessages(sapply(libs.to.load, require, character.only = TRUE))
 
 ##setwd("C:/Users/CM/code/M1/R")
@@ -14,12 +17,12 @@ files.sources = files.sources[files.sources != "main_matthieu.r"]
 sapply(files.sources, source)
 
 ##
-plt = FALSE #(si on veut plot, mettre à TRUE)
+plt = T #(si on veut plot, mettre à TRUE)
 path_submission = "./submissions/submission.csv"
 
 
 ##MAIN NICOLAS
-model = "lstm"
+model = "aucun"
 
 data = format_data("./data/train_V2.csv", "./data/test_V2.csv")
 train_set = data$train_set
@@ -32,7 +35,6 @@ if (model == "xgboost"){
 } else if(model == "lstm"){
   pred = lstm(train_set, train_label, test_set)
 }
-
 
 print(paste("Score final : ", evaluate(test_label, pred), sep=""))
 
@@ -86,6 +88,7 @@ if (plt){
 ##estimation avec fourier
 pred.fourier = fourier(train, test, plt = TRUE)
 
+
 ##saisonalite : hebdomadaire
 
 num.years = 0
@@ -121,7 +124,6 @@ pred.hebdo.test = average[test.to.day]
 
 pred.total.train = reg$fitted + pred.hebdo.train
 pred.total.test = pred.fourier + pred.hebdo.test
-
 
 if (plt){
     par(mfrow=c(1,1))
@@ -160,9 +162,28 @@ test_label = tmp$test_label
 
 Gam.rmse = evaluate(test_label, gam.test)
 
-##cross-validation
+## cross-validation
+
 cv = cross_validation(train, test)
-model = cv$model; pred.test = cv$pred.test; RMSE = cv$RMSE
+cross.train = cv$train; cross.test = cv$test
+
+## GAM
+
+model = gam(Load~s(Load.1,k=6)+s(Load.7,k=7)+s(Temp,k=6,bs="cr")
+            +s(WeekDays,k=7)+s(toy,k=6,bs="cr")
+            +ti(toy,Temp,bs="cr")+ti(toy,Load.1,bs="cr")
+            +ti(toy,Temp_s99_min,k=6,bs="cr")
+            +ti(WeekDays,Load.1,k=6)
+            ,data=cross.train)
+summary(model)
+
+pred.test = predict(model,test)
+
+N = length(test$Load.1)
+RMSE = rmse(pred.test[-N], test$Load.1[2:N]) #on connait pas le dernier
+print(RMSE)
+
+##scatter3D(train$Load.1,train$Load.7,train$Load, theta = 50, phi = 20)
 
 if (plt){
     par(mfrow=c(1,1))
@@ -179,19 +200,49 @@ write.csv(submission, file =path_submission, row.names=F)
 
 ##lstm
 
-pred.lstm = neural_network(train, test)
+NN = neural_network(cross.train, test)
+NN.model = NN$model;
+pred.lstm = NN.model %>% predict(data.matrix(train[,-c(1,2,22,23)]))
 
-##random forest
+rmse(NN$test[-N], test$Load.1[2:N])
 
-res = random_forest(train, test)
+## random forest
+
+res = random_forest(cross.train, test)
 pred.test.rf = res$pred.test.rf
 rf = res$rf
+rf$importance
+varImpPlot(rf)
 
+pred.train.rf = predict(rf,train)
+
+rmse(pred.test[-N], test$Load.1[2:N])
+
+## SVM
+
+SVM = svm(Load ~ toy + Temp + Load.1 + Load.7 + WeekDays , cross.train)
+
+pred.svm.test = predict(SVM, test)
+pred.svm.train = predict(SVM, train)
+
+rmse(pred.svm.train, train$Load)
+rmse(pred.svm.test[-N], test$Load.1[2:N])
+
+if (plt){
+  par(mfrow=c(1,1))
+  plot(train$Load,type='l', xlim=c(0,length(total.time)))
+  lines(train$time,pred.svm.train, col='red', lwd=1)
+  lines(test$time,pred.svm.test, col='green', lwd=1)
+}
 
 ##aggregation
 
-list_experts_train = abind(predict(model, train), pred.lstm$train, rf$predicted, along = 2) 
-experts.test = cbind(pred.test, pred.lstm$test, pred.test.rf)
+list_experts_train = abind(predict(model, train), 
+                           pred.lstm,
+                           pred.train.rf,
+                           pred.svm.train,
+                           along = 2)
+experts.test = cbind(pred.test, NN$test, pred.test.rf, pred.svm.test)
 
 
 add_expert = function(list_experts_train){
@@ -200,6 +251,8 @@ add_expert = function(list_experts_train){
 }
 
 experts.train = add_expert(list_experts_train)
+
+
 oracle1 = mixture(
             Y = train$Load,
             experts = experts.train,
@@ -236,4 +289,3 @@ Id = 1:length(test$Load.1)
 submission = data.frame(Load, Id)
 
 write.csv(submission, file =path_submission, row.names=F)
-

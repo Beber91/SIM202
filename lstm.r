@@ -1,4 +1,4 @@
-lstm = function(train_set, train_label, test_set){
+lstm = function(train_set, train_label, test_set, to_predict){
   N = length(train_set[,'Load.1'])
   nb_var = 17
   y = train_label
@@ -6,9 +6,10 @@ lstm = function(train_set, train_label, test_set){
   x_test = array(test_set,dim = c(length(test_set[,'Load.1']), nb_var, 1))
   print("step1")
   model = keras_model_sequential() %>%   
-    #layer_lstm(units=128, input_shape=c(nb_var, 1), activation="relu", return_sequences = TRUE) %>% 
-    layer_dense(units=64, activation = "relu") %>%  
-    layer_dense(units=32) %>%  
+    layer_dense(units=128, activation = "relu") %>%  
+    layer_dense(units=64, activation = "relu") %>%
+    layer_dense(units=32, activation = "relu") %>%
+    layer_dense(units=16, activation = "relu") %>%
     layer_dense(units=1, activation = "linear")
   print("step2")
   model %>% compile(loss = 'mse',
@@ -16,11 +17,12 @@ lstm = function(train_set, train_label, test_set){
                     metrics = list("mean_absolute_error")
   )
   print("step3")
-  model %>% fit(x,y, epochs=100, batch_size=32, shuffle = FALSE)
+  model %>% fit(x,y, epochs=30, batch_size=32, shuffle = FALSE)
   print("step4")
   print(length(x_test))
   pred = model %>% predict(x_test)
   print("step5")
-  return(pred)
+  
+  return(list("pred"=pred,"model"=model))
     
 }

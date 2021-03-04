@@ -8,9 +8,10 @@ neural_network = function(train, test, plt = FALSE){
         x = data.matrix(train_set)
         x_test = data.matrix(test_set)
         model = keras_model_sequential() %>%
-            layer_dense(units = 19, activation = 'relu', input_shape = c(19)) %>%
-            layer_dense(units = 12, activation = 'relu') %>%
-            layer_dense(units = 6, activation = 'relu') %>%
+            layer_dense(units = 128, activation = 'relu', input_shape = c(19)) %>%
+            layer_dense(units = 64, activation = 'relu') %>%
+            layer_dense(units = 32, activation = 'relu') %>%
+            layer_dense(units = 16, activation = 'relu') %>%
             layer_dense(units=1, activation = "linear")
         
         model %>% compile(loss = 'mse',
@@ -21,7 +22,7 @@ neural_network = function(train, test, plt = FALSE){
         pred.train = model %>% predict(x)
         pred.test = model %>% predict(x_test)
 
-        return(list("train"=pred.train,"test"=pred.test))
+        return(list("train"=pred.train,"test"=pred.test,"model"=model))
     }
 
 

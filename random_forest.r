@@ -1,8 +1,10 @@
 random_forest = function(train, test, plt = FALSE){
 
-    rf = randomForest(Load ~ ., data=train, mtry=3,
+    rf = randomForest(Load ~ ., data=train, mtry=500,
                       importance=TRUE, na.action=na.omit)
     pred.test.rf = predict(rf,test)
+    
+    print(rf$importance)
 
     if (plt){
         par(mfrow=c(1,1))
