@@ -1,3 +1,5 @@
+## A FAIRE SVM + ACF ET PCF SUR LOAD
+
 rm(list=objects())
 graphics.off()
 
