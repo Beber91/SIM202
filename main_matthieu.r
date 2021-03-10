@@ -9,7 +9,7 @@ libs.to.load = c("tidyverse", "lubridate", "ranger",
                  "pracma", "Metrics", "mgcv", "keras",
                  "visreg", "caret", "mc2d", "opera", "abind",
                  "randomForest", "tensorflow","plot3D","e1071"
-                 ,"numbers","glmnet","neuralnet")
+                 ,"numbers","glmnet","neuralnet", "forecast", "xts")
 suppressPackageStartupMessages(sapply(libs.to.load, require, character.only = TRUE))
 
 ##setwd("C:/Users/CM/code/M1/R")
@@ -26,6 +26,9 @@ path_submission = "./submissions/submission.csv"
 
 ##MAIN NICOLAS
 model = "aucun"
+date1 = strptime("01/01/2012", "%d/%m/%Y")
+date2 = strptime("16/04/2020", "%d/%m/%Y")
+Date = seq(date1, date2, by = "1 day")
 
 data = format_data("./data/train_V2.csv", "./data/test_V2.csv")
 train_set = data$train_set
@@ -201,12 +204,12 @@ if (plt){
 
 ## LSTM
 
-NN = neural_network(cross.train, test)
-NN$test
+#NN = neural_network(cross.train, test)
+#NN$test
 
-plot(NN$test,type='l')
+#plot(NN$test,type='l')
 
-rmse(NN$test[-275], to.test)
+#rmse(NN$test[-275], to.test)
 
 ## random forest
 
@@ -226,7 +229,7 @@ rmse(pred.test.rf[-N], to.test)
 
 aaa = tune(svm, Load ~ toy + Temp + Temp_s99_min +
         Load.1 + Load.7 + WeekDays, data=cross.train,
-        ranges=list(elsilon=seq(0,1,0.1), cost=1:100))
+        ranges=list(epsilon=seq(0,1,0.1), cost=1:5))
 
 SVM = aaa$best.model
 
@@ -258,17 +261,40 @@ rmse(pred.elastic.test[-N], to.test)
 
 ## NN
 
+## ARIMA
 
+train_ts = xts(train_label, order.by = Date)
+train_msts = msts(train_ts, seasonal.periods = 365)
+tmp = forecast::fourier(train_msts, K = 15, h = length(test_label))
+arimamodel = auto.arima(train_ts, seasonal =FALSE, xreg = forecast::fourier(train_msts, K  = 15))
+forecast = data.frame(forecast(arimamodel, xreg = tmp))
+plot(forecast$Point.Forecast)
+
+#LM
+
+modelLM = lm(Load~Load.1+Load.7+Temp
+            +WeekDays+ toy
+            +toy*Temp+toy*Load.1
+            +toy*Temp_s99_min
+            +WeekDays*Load.1
+            ,data=cross.train)
+pred.lm.train = predict(modelLM,select(train,-'Load'))
+pred.lm.test = predict(modelLM,test)
+RMSE(pred.lm.test[-N], to.test)
 ##aggregation
 
 list_experts_train = abind(pred.gam.train, 
                            #pred.lstm,
                            pred.train.rf,
-                           pred.svm.train,
+                           pred.svm.train, 
                            pred.elastic.train,
+                           arimamodel$fitted,
+                           pred.lm.train,
                            along = 2)
 experts.test = cbind(pred.gam.test, #NN$test, 
-                     pred.test.rf, pred.svm.test,pred.elastic.test)
+                     pred.test.rf, pred.svm.test,pred.elastic.test,
+                     forecast$Point.Forecast,
+                     pred.lm.test)
 
 
 add_expert = function(list_experts_train){
@@ -280,7 +306,7 @@ experts.train = add_expert(list_experts_train)
 
 
 oracle1 = mixture(
-            Y = train$Load,
+            Y = train_label,
             experts = experts.train,
             model = "OGD",
             loss.type = "square",
@@ -292,11 +318,11 @@ print(oracle1)
 pred.oracle = experts.test %*% coeffs1#c(0.4,0.4,0.1,0.1)##coeffs2
 
 par(mfrow=c(1,1))
-plot(train$Load,type='l', xlim=c(0,length(total.time)))
+plot(train_label,type='l', xlim=c(0,length(total.time)))
 lines(test$time,pred.oracle, col='green', lwd=1)
 
 N = length(test$Load.1)
-RMSE = rmse(pred.oracle[-N], test$Load.1[2:N])
+RMSE = rmse(pred.oracle[-N], to.test)
 RMSE
 
 Load = pred.oracle
