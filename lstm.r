@@ -1,28 +1,70 @@
-lstm = function(train_set, train_label, test_set, to_predict){
-  N = length(train_set[,'Load.1'])
-  nb_var = 17
-  y = train_label
-  x = array(train_set, dim = c(N, nb_var, 1))
-  x_test = array(test_set,dim = c(length(test_set[,'Load.1']), nb_var, 1))
-  print("step1")
-  model = keras_model_sequential() %>%   
-    layer_dense(units=128, activation = "relu") %>%  
-    layer_dense(units=64, activation = "relu") %>%
-    layer_dense(units=32, activation = "relu") %>%
-    layer_dense(units=16, activation = "relu") %>%
-    layer_dense(units=1, activation = "linear")
-  print("step2")
-  model %>% compile(loss = 'mse',
-                    optimizer = 'adam',
-                    metrics = list("mean_absolute_error")
-  )
-  print("step3")
-  model %>% fit(x,y, epochs=30, batch_size=32, shuffle = FALSE)
-  print("step4")
-  print(length(x_test))
-  pred = model %>% predict(x_test)
-  print("step5")
+neural_network = function(train, test, plt = FALSE){
+  labels = train[,2]
+  train.lstm = train[,-c(1,2,22,23)]
+  test.lstm = test[,-c(1,20,21,23,24)]
   
-  return(list("pred"=pred,"model"=model))
+  lstm = function(train_set, train_label, test_set) {
+    ##y = train_label
+    ##x = data.matrix(train_set)
+    ##x_test = data.matrix(test_set)
     
+    #nombre de lignes par sample du batch
+    window = 10
+    n_windows = nrow(train_set) - window + 1
+    
+    n_features = ncol(train_set)
+    
+    
+    x = array(data=NA, dim=c(n_windows,
+                             window,
+                             n_features))
+    
+    y = array(data=NA, dim=c(n_windows,
+                             window,
+                             1))
+    
+    for (i in 1:n_windows) {
+      x[i,,] = data.matrix(train_set[i:(i + window - 1),])
+      y[i,,] = as.matrix(data.matrix(train_label[i:(i + window - 1),]))
+    }
+    i = 1
+    print(size(y))
+    
+    batch_size = 1
+    
+    lrelu = function(x) tf.keras.activations.relu(x, alpha=0.1)
+    model = keras_model_sequential() %>%
+      layer_lstm(
+        units = 64,
+        batch_input_shape = c(batch_size, window, n_features),
+        dropout = 0.2,
+        recurrent_dropout = 0.2,
+        return_sequences = T,
+      ) %>%
+      time_distributed(layer_dense(units = 1))
+    
+    model %>% compile(loss = 'mae',
+                      optimizer = optimizer_rmsprop())
+    
+    model %>% fit(x, y, epochs=15)
+    
+    pred.train = model %>% predict(X_train)
+    pred.test = model %>% predict(X_test)
+    
+    return(list("train"=pred.train,"test"=pred.test,"model"=model))
+  }
+  
+  
+  pred.lstm = lstm(train.lstm, labels, test.lstm)
+  
+  if (plt){
+    par(mfrow=c(1,1))
+    plot(train$Load,type='l', xlim=c(0,length(total.time)))
+    lines(test$time,pred.lstm$test, col='green', lwd=1)
+  }
+  
+  N = length(test$Load.1)
+  RMSE = rmse(pred.lstm$test[-N], test$Load.1[2:N])
+  RMSE
+  return(pred.lstm)
 }

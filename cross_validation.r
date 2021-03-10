@@ -1,15 +1,10 @@
-cross_validation = function (train, test) {
+cross_validation = function (data) {
   set.seed(123)
-  to.extract = rbern(n=length(train$Load),p=0.8)==T
-  to.train = train[F,]
-  for (j in 1:length(to.extract)) {
-    if (to.extract[j]) {
-      to.train[nrow(to.train)+1,] = train[j,]
-    }
-  }
   
-  cross.train  <- train[to.train$time, ]
-  cross.test <- train[-to.train$time, ]
-
+  to.train = rbern(n=length(data$Load),p=0.8)==T
+  
+  cross.train =  data[to.train, ]
+  cross.test  =  data[!to.train, ]
+  
   return(list("train"=cross.train,"test"=cross.test))
 }

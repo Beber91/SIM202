@@ -1,4 +1,4 @@
-## A FAIRE SVM + ACF ET PCF SUR LOAD
+## A FAIRE SVM + ACF ET PCF SUR LOAD + SITE FAVORI + STACKING
 
 rm(list=objects())
 graphics.off()
@@ -8,7 +8,8 @@ graphics.off()
 libs.to.load = c("tidyverse", "lubridate", "ranger",
                  "pracma", "Metrics", "mgcv", "keras",
                  "visreg", "caret", "mc2d", "opera", "abind",
-                 "randomForest", "tensorflow","plot3D","e1071")
+                 "randomForest", "tensorflow","plot3D","e1071"
+                 ,"numbers","glmnet","neuralnet")
 suppressPackageStartupMessages(sapply(libs.to.load, require, character.only = TRUE))
 
 ##setwd("C:/Users/CM/code/M1/R")
@@ -19,7 +20,7 @@ files.sources = files.sources[files.sources != "main_matthieu.r"]
 sapply(files.sources, source)
 
 ##
-plt = T #(si on veut plot, mettre à TRUE)
+plt = F #(si on veut plot, mettre à TRUE)
 path_submission = "./submissions/submission.csv"
 
 
@@ -152,21 +153,24 @@ test$seasonal.tendancy = test$Load.1 - MAw.test.total
 train$fourier.fitted = reg$fitted
 test$fourier.fitted = pred.fourier
 
-reg2 = lm(Load~Load.1+Load.7+Temp
-+Temp_s95+WeekDays+GovernmentResponseIndex,data=train)
-summary(reg2)
+## scaling data
+train = select(train,-c('Date','seasonal.tendancy','fourier.fitted'))
+test = select(test,-c('Date','seasonal.tendancy','fourier.fitted','Usage','Id'))
 
-##visreg(Gam,"Temp_s95")
-gam.test = gam_rte(train, test)
+Load = train$Load; train.time = train$time; test.time = test$time
 
-tmp = format_data("./data/train_V2.csv", "./data/test_V2.csv")
-test_label = tmp$test_label
+train.scaled = as.data.frame(scale(train, center = T, scale = T))
+train.scaled$Load = Load; train$time = train.time
 
-Gam.rmse = evaluate(test_label, gam.test)
+test.scaled = as.data.frame(scale(test, center = T, scale = T))
+test.scaled$time = test.time
+
+N = length(test$Load.1)
+to.test = test$Load.1[2:N]
 
 ## cross-validation
 
-cv = cross_validation(train, test)
+cv = cross_validation(train)
 cross.train = cv$train; cross.test = cv$test
 
 ## GAM
@@ -179,10 +183,11 @@ model = gam(Load~s(Load.1,k=6)+s(Load.7,k=7)+s(Temp,k=6,bs="cr")
             ,data=cross.train)
 summary(model)
 
-pred.test = predict(model,test)
+pred.gam.train = predict(model,select(train,-'Load'))
+pred.gam.test = predict(model,test)
 
 N = length(test$Load.1)
-RMSE = rmse(pred.test[-N], test$Load.1[2:N]) #on connait pas le dernier
+RMSE = rmse(pred.gam.test[-N], to.test) #on connait pas le dernier
 print(RMSE)
 
 ##scatter3D(train$Load.1,train$Load.7,train$Load, theta = 50, phi = 20)
@@ -194,41 +199,42 @@ if (plt){
     lines(test$time,pred.test, col='green', lwd=1)
 }
 
-Load = pred.test
-Id = 1:length(Load)
-submission = data.frame(Load, Id)
-
-write.csv(submission, file =path_submission, row.names=F)
-
-##lstm
+## LSTM
 
 NN = neural_network(cross.train, test)
-NN.model = NN$model;
-pred.lstm = NN.model %>% predict(data.matrix(train[,-c(1,2,22,23)]))
+NN$test
 
-rmse(NN$test[-N], test$Load.1[2:N])
+plot(NN$test,type='l')
+
+rmse(NN$test[-275], to.test)
 
 ## random forest
 
-res = random_forest(cross.train, test)
-pred.test.rf = res$pred.test.rf
-rf = res$rf
-rf$importance
-varImpPlot(rf)
+tuneRF(select(train, -'Load'),train$Load)
+n_trees = 12
+res = random_forest(cross.train, test, n_trees)
+pred.test.rf = res$pred.test.rf; rf = res$rf
+
+##rf$importance
+##varImpPlot(rf)
 
 pred.train.rf = predict(rf,train)
 
-rmse(pred.test[-N], test$Load.1[2:N])
+rmse(pred.test.rf[-N], to.test)
 
 ## SVM
 
-SVM = svm(Load ~ toy + Temp + Load.1 + Load.7 + WeekDays , cross.train)
+aaa = tune(svm, Load ~ toy + Temp + Temp_s99_min +
+        Load.1 + Load.7 + WeekDays, data=cross.train,
+        ranges=list(elsilon=seq(0,1,0.1), cost=1:100))
+
+SVM = aaa$best.model
 
 pred.svm.test = predict(SVM, test)
 pred.svm.train = predict(SVM, train)
 
 rmse(pred.svm.train, train$Load)
-rmse(pred.svm.test[-N], test$Load.1[2:N])
+rmse(pred.svm.test[-N], to.test)
 
 if (plt){
   par(mfrow=c(1,1))
@@ -237,14 +243,32 @@ if (plt){
   lines(test$time,pred.svm.test, col='green', lwd=1)
 }
 
+## Elastic-Net
+
+elastic = cv.glmnet(data.matrix(select(cross.train,-'Load')),cross.train$Load,
+          family="gaussian",type.measure="mse",alpha=0.7)
+
+lambda.min = elastic$lambda.min
+
+pred.elastic.train = predict(elastic,data.matrix(select(train,-'Load'))
+                             ,s=lambda.min)
+pred.elastic.test = predict(elastic,data.matrix(test),s=lambda.min)
+
+rmse(pred.elastic.test[-N], to.test)
+
+## NN
+
+
 ##aggregation
 
-list_experts_train = abind(predict(model, train), 
-                           pred.lstm,
+list_experts_train = abind(pred.gam.train, 
+                           #pred.lstm,
                            pred.train.rf,
                            pred.svm.train,
+                           pred.elastic.train,
                            along = 2)
-experts.test = cbind(pred.test, NN$test, pred.test.rf, pred.svm.test)
+experts.test = cbind(pred.gam.test, #NN$test, 
+                     pred.test.rf, pred.svm.test,pred.elastic.test)
 
 
 add_expert = function(list_experts_train){
@@ -258,25 +282,14 @@ experts.train = add_expert(list_experts_train)
 oracle1 = mixture(
             Y = train$Load,
             experts = experts.train,
-            model = "EWA",
+            model = "OGD",
             loss.type = "square",
             coefficients = "Uniform",
 )
 coeffs1 = oracle1$coefficients
 print(oracle1)
 
-##alternative
-
-oracle2 <- oracle(Y = train$Load,
-                        experts = experts.train,
-                        loss.type = "square", model = "convex"
-)
-plot(oracle2)
-coeffs2 = oracle2$coefficients
-coeffs2 = as.vector(coeffs2)
-print(coeffs2)
-
-pred.oracle = experts.test %*% coeffs1;
+pred.oracle = experts.test %*% coeffs1#c(0.4,0.4,0.1,0.1)##coeffs2
 
 par(mfrow=c(1,1))
 plot(train$Load,type='l', xlim=c(0,length(total.time)))
@@ -291,3 +304,5 @@ Id = 1:length(test$Load.1)
 submission = data.frame(Load, Id)
 
 write.csv(submission, file =path_submission, row.names=F)
+
+
