@@ -1,11 +1,12 @@
-xgboost_rte = function(train_set, train_label, test_set){
-  param = list(booster = "gblinear", objective = "reg:squarederror", eval_metric = "rmse", lambda = 0.0003, alpha = 0.0003, nthread = 2, eta = 0.1)
-  
-  print("Model : XGBOOST")
-  
-  xgbmodel = xgboost(data = train_set, label = train_label, nrounds = 200, params = param, verbose = 0)
-  
-  pred = predict(xgbmodel, test_set)
-  
-  return(pred)
+xgboost_rte = function(cross.train, cross.test, train, test, plt = FALSE){
+    GBM = caret::train(Load ~ Load.1 + Load.7 + toy
+                       + Temp + Temp_s99_min + Temp_s99_max
+                       + WeekDays,
+                       data = train, method = "gbm", trace = F)
+    summary(GBM)
+    pred.gbm.train <- predict(GBM, newdata = train)
+    pred.gbm.test <- predict(GBM, newdata = test)
+    
+    RMSE(pred.gbm.test[-N], to.test)
+    return(list("pred.train" = pred.gbm.train, "pred.test" = pred.gbm.test))
 }

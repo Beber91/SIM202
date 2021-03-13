@@ -50,3 +50,28 @@ format_data = function(file_train, file_test) {
     test_set = data.matrix(test_set)
     return(list("train_set" = train_set, "train_label" = train_label, "test_set" = test_set, "test_label" = test_label))
 }
+
+format_data_mat = function(path_train, path_test){
+    train <- read_delim(file=path_train,delim=',')
+    test <- read_delim(file=path_test,delim=',')
+
+    train$WeekDays = days_to_numeric(train)
+    test$WeekDays = days_to_numeric(test)
+    
+    train$Year = train$Year - 2012
+    test$Year = test$Year - 2012
+
+    total.time = c(1:(nrow(train)+nrow(test)))
+    length(total.time)
+    train$time = total.time[1:nrow(train)]
+    test$time = tail(total.time,nrow(test))
+    
+    return(list("train" = train, "test" = test))
+}
+
+scdat = function(train, test){
+    summary(train)
+    tr = select(train,-c('Date'))
+    te = select(test,-c('Date','Usage','Id'))
+    list("train" = tr, "test" = te)
+}

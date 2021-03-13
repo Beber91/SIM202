@@ -1,20 +1,17 @@
-gam_rte = function(train, test, plt = FALSE){
-    Gam <- gam(Load~s(Load.1)+s(Load.7)+s(Temp)
-               +s(Temp_s95)+s(WeekDays,k=7)
-               +s(GovernmentResponseIndex)
-              ,data=train)
-    summary(Gam)
-
-
-    gam.train = predict(Gam, newdata=train)
-    gam.test = predict(Gam, newdata=test)
-
-    if (plt){
-        par(mfrow=c(1,1))
-        plot(train$Load,type='l', xlim=c(0,length(total.time)))
-        lines(train$time,Gam$fit, col='red', lwd=1)
-        lines(test$time,gam.test, col='green', lwd=1)
-    }
-
-    return(gam.test)
+gam_rte = function(cross.train, cross.test, train, test, plt = FALSE){
+    model = gam(Load~s(Load.1,k=6)+s(Load.7,k=7)+s(Temp,k=6,bs="cr")
+                +s(WeekDays,k=7)+s(toy,k=6,bs="cr")
+                +ti(toy,Temp,bs="cr")+ti(toy,Load.1,bs="cr")
+                +ti(toy,Temp_s99_min,k=6,bs="cr")
+                +ti(WeekDays,Load.1,k=6)
+               ,data=cross.train)
+    #summary(model)
+    
+    pred.gam.train = predict(model,select(train,-'Load'))
+    pred.gam.test = predict(model,test)
+    
+    #N = length(test$Load.1)
+    #RMSE = rmse(pred.gam.test[-N], test) #on connait pas le dernier
+    #print(RMSE)
+    return(list("pred.train" = pred.gam.train, "pred.test" = pred.gam.test))
 }

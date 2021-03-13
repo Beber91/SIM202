@@ -17,6 +17,8 @@ suppressPackageStartupMessages(sapply(libs.to.load, require, character.only = TR
 ##load tous les fichiers en sources
 files.sources = list.files(pattern = "*.r$")
 files.sources = files.sources[files.sources != "main_matthieu.r"]
+files.sources = files.sources[files.sources != "main.r"]
+
 sapply(files.sources, source)
 
 ##
