@@ -121,9 +121,5 @@ neural_network = function(train, test, plt = FALSE){
         plot(train$Load,type='l', xlim=c(0,length(total.time)))
         lines(test$time,pred.lstm$test, col='green', lwd=1)
     }
-
-    N = length(test$Load.1)
-    RMSE = rmse(pred.lstm$test[-N], test$Load.1[2:N])
-    RMSE
     return(pred.lstm)
 }

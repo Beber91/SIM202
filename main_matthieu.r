@@ -20,7 +20,7 @@ files.sources = files.sources[files.sources != "main_matthieu.r"]
 sapply(files.sources, source)
 
 ##
-plt = F #(si on veut plot, mettre à TRUE)
+plt = T #(si on veut plot, mettre à TRUE)
 path_submission = "./submissions/submission.csv"
 
 
@@ -75,6 +75,7 @@ total.time = c(1:(nrow(train)+nrow(test)))
 length(total.time)
 train$time = total.time[1:nrow(train)]
 test$time = tail(total.time,nrow(test))
+
 
 
 #saisonalite : annuelle
@@ -204,8 +205,9 @@ if (plt){
 
 ## LSTM
 
-#NN = neural_network(cross.train, test)
+#NN = lstm(cross.train, test)
 #NN$test
+
 
 #plot(NN$test,type='l')
 
@@ -259,7 +261,32 @@ pred.elastic.test = predict(elastic,data.matrix(test),s=lambda.min)
 
 rmse(pred.elastic.test[-N], to.test)
 
-## NN
+## Ridge
+
+ridge = cv.glmnet(data.matrix(select(cross.train,-'Load')),cross.train$Load,
+                    family="gaussian",type.measure="mse",nlambda=25)
+
+lambda.min = ridge$lambda.min
+
+pred.ridge.train = predict(ridge,data.matrix(select(train,-'Load'))
+                             ,s=lambda.min)
+pred.ridge.test = predict(ridge,data.matrix(test),s=lambda.min)
+
+rmse(pred.ridge.test[-N], to.test)
+
+## Lasso
+
+lasso = cv.glmnet(data.matrix(select(cross.train,-'Load')),cross.train$Load,
+                  family="gaussian",type.measure="mse",
+                  lambda=10^seq(2,-3,by=-.1))
+
+lambda.min = lasso$lambda.min
+
+pred.lasso.train = predict(lasso,data.matrix(select(train,-'Load'))
+                           ,s=lambda.min)
+pred.lasso.test = predict(lasso,data.matrix(test),s=lambda.min)
+
+rmse(pred.lasso.test[-N], to.test)
 
 ## ARIMA
 
@@ -268,33 +295,64 @@ train_msts = msts(train_ts, seasonal.periods = 365)
 tmp = forecast::fourier(train_msts, K = 15, h = length(test_label))
 arimamodel = auto.arima(train_ts, seasonal =FALSE, xreg = forecast::fourier(train_msts, K  = 15))
 forecast = data.frame(forecast(arimamodel, xreg = tmp))
-plot(forecast$Point.Forecast)
+plot(forecast$Point.Forecast,type='l')
 
-#LM
+## Linear Model
+pmax(c(1,4,4),0)
 
-modelLM = lm(Load~Load.1+Load.7+Temp
-            +WeekDays+ toy
-            +toy*Temp+toy*Load.1
-            +toy*Temp_s99_min
-            +WeekDays*Load.1
+
+##plot(pmin(train$Temp-15,0),train$Load)
+
+modelLM = lm(Load~Load.7 + pmin(Temp-15,0)
+            + toy*Temp + toy*Load.1
+            + toy*Temp_s99_min
+            + WeekDays*Load.1
             ,data=cross.train)
+summary(modelLM)
 pred.lm.train = predict(modelLM,select(train,-'Load'))
 pred.lm.test = predict(modelLM,test)
+
 RMSE(pred.lm.test[-N], to.test)
-##aggregation
+
+plot(train$Temp,train$Load)
+
+##scatter3D(train$toy,train$Load.1,train$Load, theta = 50, phi = 50)
+
+## XGBoost
+
+GBM = caret::train(Load ~ Load.1 + Load.7 + toy
+                   + Temp + Temp_s99_min + Temp_s99_max
+                   + WeekDays,
+                 data = train, method = "gbm", trace = F)
+summary(GBM)
+pred.gbm.train <- predict(GBM, newdata = train)
+pred.gbm.test <- predict(GBM, newdata = test)
+
+RMSE(pred.gbm.test[-N], to.test)
+
+## Aggregation
 
 list_experts_train = abind(pred.gam.train, 
                            #pred.lstm,
                            pred.train.rf,
                            pred.svm.train, 
                            pred.elastic.train,
+                           pred.ridge.train,
+                           pred.lasso.train,
                            arimamodel$fitted,
                            pred.lm.train,
+                           pred.gbm.train,
                            along = 2)
+
 experts.test = cbind(pred.gam.test, #NN$test, 
-                     pred.test.rf, pred.svm.test,pred.elastic.test,
+                     pred.test.rf,
+                     pred.svm.test,
+                     pred.elastic.test,
+                     pred.ridge.test,
+                     pred.lasso.test,
                      forecast$Point.Forecast,
-                     pred.lm.test)
+                     pred.lm.test,
+                     pred.gbm.test)
 
 
 add_expert = function(list_experts_train){
@@ -332,3 +390,4 @@ submission = data.frame(Load, Id)
 write.csv(submission, file =path_submission, row.names=F)
 
 
+#temp max n'influe pas 
