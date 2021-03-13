@@ -51,6 +51,7 @@
 	\DeclareRobustCommand{\ref}[2][]{(\oldref#1{#2})}%
 }
 \begin{document}
+\SweaveOpts{concordance=TRUE}
 \hypersetup{pageanchor=false}
 \begin{titlepage}
 	\newcommand{\HRule}{\rule{\linewidth}{0.5mm}}
@@ -58,7 +59,7 @@
 	\textsc{\LARGE Université Paris Saclay}\\[1.5cm]
 	\includegraphics[width=200px]{img/LogoMathOrsay.png}
 	\HRule \\[0.4cm]
-	{ \huge \bfseries\centering Séries temporelles}\\[0.4cm]
+	{ \huge \bfseries\centering Lockdown Period Load Forecasting}\\[0.4cm]
 	\HRule \\[1.5cm]
 	\begin{minipage}{0.4\textwidth}
 		\begin{flushleft} \large
@@ -71,7 +72,7 @@
 	\begin{minipage}{0.4\textwidth}
 		\begin{flushright} \large
 			\emph{Superviseur:} \\
-			\href{https://mzaffran.github.io/}{Margaux \textsc{Zaffran}} \\
+			\href{https://www.imo.universite-paris-saclay.fr/~goude/about.html}{Yannig \textsc{Goude}} \\
 		\end{flushright}
 	\end{minipage}\\[2cm]
 	{\large \today}\\[2cm]
@@ -92,195 +93,71 @@
 \pagebreak
 \section{Présentation du sujet}
 <<importation,echo=FALSE,message=FALSE, warning=FALSE, include=FALSE>>=
-libs.to.load = c("tidyverse", "lubridate", "MLmetrics", "ranger", "pracma", "Metrics", "mgcv", "xts", "stats", "forecast")
+libs.to.load = c("tidyverse", "lubridate", "ranger",
+                 "pracma", "Metrics", "mgcv", "keras",
+                 "visreg", "caret", "mc2d", "opera", "abind",
+                 "randomForest", "tensorflow", "plot3D", "e1071", "xts")
 suppressPackageStartupMessages(sapply(libs.to.load, require, character.only = TRUE))
 files.sources = list.files(pattern = "*.r$")
-files.sources = files.sources[files.sources != "main.r"]
+files.sources = files.sources[files.sources != "main_matthieu.r"]
 sapply(files.sources, source)
 
-data = read.table("./data/temp.csv", header = T)
+data = format_data("./data/train_V2.csv", "./data/test_V2.csv")
+train_set = data$train_set
+test_set = data$test_set
+train_label = data$train_label
+test_label = data$test_label
+
+date1 = strptime("01/01/2012", "%d/%m/%Y")
+date2 = strptime("16/04/2020", "%d/%m/%Y")
+Date = seq(date1, date2, by = "1 day")
+
+train_ts = xts(train_set, order.by = Date)
+test_ts = xts(train_set, order.by = Date)
+train_label_ts = xts(train_label, order.by = Date)
+
 @
-Nous allons nous intéresser au jeu de donnée \href{https://climexp.knmi.nl/data/teca31.dat}{Daily Mean Temperature at Marseille Obs. Palais-Lonchamp, FRANCE} mis à disposition par le  \href{https://www.ecad.eu/}{European Climate Assessment Dataset}, comportant des données de températures pour de nombreuses stations météos. Nous avons sélectionné celle de l'observatoire de Marseille. 
-Ce jeu de données comporte 37602 lignes s'étalant du 1er janvier 1900 au 31 décembre 2002. Chaque ligne est composée de 
+Nous allons nous intéresser à la prédiction de la consommation électrique en France durant la pandémie de COVID-19. Cette situation de confinement et couvre-feu étant inédite, nous n'avons pas de données et de modèles adaptés. Nous allons donc essayer de fournir un modèle prédictif dont nous évaluerons la qualité en utilisant la Root Mean Squared Error (RMSE). Prédire la consommation électrique à l'avance permet d'adapter la production en amont et ainsi d'éviter des coupures de courant en cas de demande élevée et d'éviter d'en produire trop. Les centrales à énergie fossile (gaz, charbon) étant les plus rapides à mettre en marche et arrêter, on peut ainsi réduire au minimum l'émission de gaz à effet de serre.
+\par
+Ce jeu de données comporte 3028 ligne pour la partie d'entrainement et 275 lignes pour la partie de test.  Chaque ligne est composée de 
 <<apercu des données, echo = FALSE>>=
-summary(data)
-@     
+summary(train_ts)
+@
+Les données d'entrainement vont du 1er janvier 2012 au 15 avril 2020 (soit 1 mois après le début du premier confinement). 
  Nous vérifions ensuite si il y a des valeurs invalides dans notre jeu de données: 
  <<apercu,echo=FALSE>>=
-which(is.na(data$Temperature))
+ which(is.na(train_set))
+ which(is.na(test_set))
 @ 
-Cependant, en regardant la taille de notre jeu de donnée, nous nous rendons compte qu'il manque certaines données. Pour repérer où se trouve ces données manquantes, nous allons copier la colonne et la lagger de 1, puis en faisant la différence avec la colonne Day de base, nous repérons les écarts inhabituels et nous faisons une interpolation linéaires entre les valeurs entourant ce trou.
-<<conversion,echo=FALSE,message=FALSE, warning=FALSE, include=FALSE>>=
-data = read.table("./data/temp.csv", header = T)
-date1 = strptime("01/01/1900", "%d/%m/%Y")
-date2 = strptime("30/12/2000", "%d/%m/%Y")
-date3 = strptime("31/12/2000", "%d/%m/%Y")
-date4 = strptime("31/12/2002", "%d/%m/%Y")
+Il n'y en a aucune.
 
-l_train = 36888
-l_test = length(data$Temperature)-l_train
-train = data$Temperature[1:l_train]
-test = data$Temperature[(l_train+1):length(data$Temperature)]
-
-Date = seq(date1, date2, by = "1 day")
-train = xts(train, order.by = Date, frequency = 365)
-Date = seq(date3, date4, by = "1 day")
-test = xts(test, order.by = Date, frequency = 365)
-
-Date = seq(date1, date4, by = "1 day")
-temperatures = list("temp" = data$Temperature, "date" = Date)
-temp.ts = xts(temperatures$temp, order.by = temperatures$date, frequency = 365)
-@
-
+Nous allons maintenant nous concentrer uniquement sur les données d'entrainement.
 \section{Analyse descriptive des données}
-Commençons par regarder à quoi ressemble nos données(nous nous limitons sur la durée observée pour des questions de lisibilité)
-<<1er plot,echo=FALSE,fig.width=8,fig.height=4,fig.pos='H',fig.align="center">>=
-plot(temp.ts[1:1461], main="Température journalière sur 4 ans")
+Commençons par regarder à quoi ressemble nos données
+<<plot all load,echo=FALSE,fig.width=8,fig.height=4,fig.pos='H',fig.align="center">>=
+plot(train_label_ts, main="Consommation électrique moyenne journalière en France")
 @
-\subsection{Statistiques de base}
-<<stats de base, echo=FALSE>>=
-summary(temp.ts)
+\subsection{Saisonnalité}
+Nous observons une saisonnalité annuelle. Si nous nous concentrons sur deux mois :
+<<plot month load,echo=FALSE,fig.width=8,fig.height=4,fig.pos='H',fig.align="center">>=
+plot(train_label_ts[1:58], main="Consommation électrique moyenne journalière en France")
 @
-<<boxplot, echo=FALSE,fig.width=8, fig.height=4, fig.pos = 'H', fig.align = "center">>=
-boxplot(temperatures$temp)
+Nous observons ici une saisonnalité au niveau de la semaine. Vérifions cela en traçant les consommations moyennes sur tout le jeu de données
+<<plot mean month load,echo=FALSE,fig.width=8,fig.height=4,fig.pos='H',fig.align="center">>=
+par(mfrow = c(1,2))
+month_average(train_label_ts)
+dow_average(train_label_ts)
+par(mfrow = c(1,1))
 @
-Nous observons qu'il y a peu d'outliers dans notre jeu de données, ce  qui devrait faciliter la prédiction.
-\subsection{Saisonnalité et corrélation}
-Nous observons qu'il y a une saisonnalité d'un an (ce qui est logique vu les données observées). \\
-Nous vérifions avec la fonction d'autocorrélation que les données sont effectivement fortement corrélées aux données 12 mois avant.
-<<acf, echo = FALSE,fig.width=8,fig.height=4,fig.pos='H',fig.align="center">>=
-acf(temperatures$temp, lag.max = 400, main = "ACF de la série temporelle")
-abline(v=365, col="blue", lty=1, lwd=2)
-@
-Traçons le profil moyen pour une année
-<<Profil mois, echo=FALSE, fig.width=8, fig.height=4, fig.pos='H', fig.align="center">>=
-month_average(temp.ts)
-@
-\subsection{Tendance}
-<<tendance, echo=FALSE, fig.width=8, fig.height=4, fig.pos='H', fig.align="center">>=
-MA <- stats::filter(data$Temperature, filter = rep(1/365,365), method = c("convolution"), sides = 2, circular = FALSE)
-plot(MA, main = "Moving Average avec une fenêtre de 365 jours")
-@
-Nous observons une augmentation nette de la température moyenne, probablement liée au réchauffement climatique.
-\section{Modélisation et prévision}
+Ces figures confirment une saisonnalité à l'année avec une consommation électrique plus élevée en hiver et chutant en été, particulièrement en août. Nous pouvons corréler cela avec la température : d'après \href{https://travaux.edf.fr/electricite/raccordement/repartition-de-la-consommation-d-electricite-au-sein-d-un-foyer-francais}{EDF}, le chauffage électrique correspond à 62$\%$ de la consommation électrique au sein d'une maison ou d'un appartement en France. Nous observons aussi une baisse de la consommation électrique lors du week-end (car moins de personnes travaillent le week-end).
 
-Pour prédire les valeurs de la série chronologique, nous allons utiliser deux modèles : les lissages exponentiels et les modèles ARIMA.
-Nous utiliserons comme méthode d'évaluation la Root-Mean-Square Error :
-\begin{equation*}
-	\text{RMSE}(x,y) = \sqrt{\frac{1}{n} \sum_{i = 1}^n (x_i-y_i)^2}, \, x,y\in\mathbb{R}^n
-\end{equation*}
-Cette erreur correspond au pourcentage de différence entre les données prédites ($y$) et les données actuelles ($x$)
-\subsection{Lissage exponentiel}
-Il existe plusieurs méthodes de lissage exponentiel adaptées à différents cas d'usage. Nous allons voir regarder laquelle parmi les suivantes est la mieux adaptée à notre jeu de données :
-\begin{itemize}
-	\item le lissage exponentiel simple
-	\item le lissage exponentiel double de Holt-Winters
-	\item le lissage exponentiel double saisonnier de Holt-Winters
-\end{itemize}
-Le lissage exponentiel simple est adapté lorsqu'il n'y a pas de tendances ni de saisonnalité dans nos données. Or ici, une saisonnalité est clairement présente. 
-Le lissage exponentiel double de Holt-Winters permet de prendre en compte une tendance dans les données mais n'est pas adapté lorsqu'il y a une saisonnalité.
-Il nous reste donc le lissage exponentiel double saisonnier de Holt-Winters qui est adapté qu'il y ait ou non une tendance et qui prend en compte la saisonnalité. C'est sur celui-là que nous allons nous concentrer.
+\subsection{Corrélation}
 
-Ce lissage exponentiel est défini par
-\begin{equation*}
-\begin{cases}
-  \widehat{y}_{t+h|t} = l_t+hb_t + s_{t+h-m(k+1)}\\
-  l_t = \alpha(y_t-s_{t-m})+(1-\alpha)(l_{t-1}+b_{t-1})\\
-  b_t = \beta(l_t-l_{t-1})+(1-\beta)b_{t-1} \\
-  s_t = \gamma(y_t-l_{t-1}-b_{t-1})+(1-\gamma)s_{t-m}
-\end{cases}
-\end{equation*}
-Nous pouvons donc jouer sur 3 paramètres $(\alpha, \beta, \gamma)$ ainsi que sur la longueur de la période $m$. Ici nous fixons la période à 365. Le paramètre $\alpha$ correspond au paramètre de lissage vis-à-vis du niveau, $\beta$ vis-à-vis de la tendance et $\gamma$ vis-à-vis de la saisonnalité. Nous les optimisons à l'aide de la fonction $\mathbf{HoltWinters}$. Nous obtenons le résultat suivant avec $(\alpha = 0.8, \beta = 0, \gamma = 0.6)$:
-<<forecast exp, echo=FALSE, fig.width=8, fig.height=4, fig.pos='H', fig.align="center">>=
-
-alpha = 0.8
-beta = 0
-gamma = 0.6
-period = 365
-horizon = l_test
-smoothing = exponential_smoothing_Holt_Winters_season(train, alpha, beta, gamma, period)
-
-forecast = c(smoothing$l[l_train] + smoothing$b[l_train]*(1:horizon) +
-             smoothing$s[l_train-period+1+(1:horizon-1)%%period])
-date3 = strptime("31/12/2000", "%d/%m/%Y")
-date4 = strptime("31/12/2002", "%d/%m/%Y")
-Date = seq(date3, date4, by = "1 day")
-forecast = xts(forecast, order.by = Date)
-plot(test, main = "Forecast contre données de test")
-lines(forecast, col = "red")
-@
-avec une RMSE de
-<<RMSE exp smooth, echo = FALSE>>=
-RMSE(forecast, test)
+<<plot ACF PACF Load, echo = FALSE, fig.width=8, fig.height=4, fig.pos='H', fig.align="center">>=
+par(mfrow = c(1,2))
+acf(train_label, lag.max = 400)
+pacf(train_label, lag.max = 400)
 @ 
+\subsection{Statistiques de base}
 
-\subsection{Modèle ARIMA}
-
-Nous allons maintenant nous intéresser aux modèles ARIMA. Comme nos données ont une saison de valeur 365, nous avons commencé par nous intéresser aux modèles SARIMA (Seasonal ARIMA) mais nous étions limités par la valeur de la saison. En effet, la fonction $\mathbf{arima}$ de $\mathbf{R}$ ne permet pas de considérer des saisons de plus de 350 itérations.Nous avons donc commencé par désaisonnaliser notre série.
-
-\subsubsection{désaisonnalisation}
-Nous allons décomposer la saisonnalité en la modélisant avec des séries de Fourier.
-La transformation de fourier associée à chaque terme de notre série (que nous appellerons $(x_n)_{n<N}$) est :
-\begin{equation*}
-  X[k] = \sum_{n=0}^{N-1}x_n \exp\left(-2i\pi \frac{kn}{N}\right)
-\end{equation*}
-Pour neutraliser le terme $X[0] = \sum_{n=0}^{N-1}x_n$, on va plutôt calculer la transformée de Fourier de $x_n-\mu$, avec $\mu$ la moyenne du processus. \\
-On en déduit donc que la fréquence vaut $\frac{k}{N}$. On a donc, en nommant $T = 365$ la saison de notre série,
-\begin{equation*}
-  \frac{k}{N} = \frac 1T \Rightarrow k = \frac NT
-\end{equation*}
-On considère maintenant la transformation de Fourier inverse :
-\begin{equation*}
- x_n = \sum_{k=0}^{N-1}X[k]\exp\left(2i\pi \frac{kn}{N}\right)
-\end{equation*}
-Examinons les valeurs du module de $X$. Les deux valeurs maximales sont : 
-<<freqgraph, echo=FALSE>>=
-X = fft(train-mean(train))
-x = abs(X)
-ks = which(x == max(x))
-ks = c(102, ks)
-print(ks)
-@
-Soit $k_0 = 102$. On a alors que pour tout k, $X[k] \simeq 0$ sauf pour $k=k_0$ et $k=-k_0$. On a ainsi
-\begin{equation*}
-  x_n \simeq X[k_0]\exp(2i\pi \frac{kn}{N})+ X[N-k_0]\exp(-2i\pi \frac{kn}{N})
-\end{equation*}
-Comme notre processus est réel, nous pouvons enfin l'estimer de la manière suivante : 
-\begin{equation*}
-x(t) \simeq \mu + A\cos(2\pi f_0t+\phi)+ N(t)
-\end{equation*}
-avec $\mu$ la moyenne du processus, $f_0=\frac{k_0}{N}$, $\phi = \text{Arg}(X[k_0])$, $A = \frac{2|X[k_0]|}{N}$ et $N(t)$ un processus à estimer.
-Nous obtenons l'approximation de la période suivante :
-<<new proc, echo=FALSE, fig.width=8, fig.height=4, fig.pos='H', fig.align="center">>=
-k_0 = ks[1]
-f_0 = k_0/l_train
-phi_0 = Arg(X[k_0])
-mu = mean(train)
-A = 2*abs(X[k_0])/(l_train)
-y = function(t){ return(mu + A * cos(2*pi*f_0*t+phi_0))}
-tmp= lapply(c(1:l_train), y)
-plot(as.numeric(tmp)[1:800], type = 'l')
-lines(as.numeric(train)[1:800], col= 'red')
-@
-$\mathbf{R}$ permet de faire cette démarche directement avec la fonction $\mathbf{fourier}$. Nous obtenons les résultats suivants sur l'ensemble de test :
-<<<end, echo=FALSE, fig.width=8, fig.height=4, fig.pos='H', fig.align="center">>=
-train = data$Temperature[(l_train-3000):l_train]
- 
-train = msts(train, seasonal.periods = 365)
-arimamodel = auto.arima(train, seasonal =FALSE, xreg = fourier(train, K  = 15))
-
-tmp = fourier(train, K = 15, h = l_test)
-
-
-forecast = forecast(arimamodel, xreg = tmp)
-fc = data.frame(forecast)
-plot(fc$Point.Forecast[l_test:length(fc)])
-lines(as.numeric(test))
-@
-Nous obtenons une RMSE de
-<<RMSE end, echo =FALSE>>=
-accuracy(forecast, test)
-@
-\section{Conclusion}
-Cette méthode permet d'obtenir un meilleur résultat que le lissage exponentiel. Cependant, elle est beaucoup plus coûteuse en ressource pour de grands sets de donnée. De plus, le modèle ARIMA peut encore être affiné, nous avons utilisé la fonction $\mathbf{auto.arima}$ mais nous observons encore un décalage entre la prévision et la réalité même si l'allure de la courbe est bien plus proche.
 \end{document}
